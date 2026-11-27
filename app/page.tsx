@@ -1,8 +1,55 @@
 import ExploreBtn from "@/components/ExploreBtn";
 import EventCard from "@/components/EventCard";
-import { events } from "@/lib/constants";
+import Event from "@/database/event.model";
+import connectDB from "@/lib/mongodb";
+import { cacheLife } from "next/cache";
+import { connection } from "next/server";
+import { Suspense } from "react";
 
-const page = () => {
+type EventSummary = {
+  title: string;
+  image: string;
+  slug: string;
+  location: string;
+  date: string;
+  time: string;
+};
+
+async function getEvents(): Promise<EventSummary[]> {
+  "use cache";
+  cacheLife("hours");
+
+  await connectDB();
+  const events = await Event.find()
+    .select("title image slug location date time")
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return events.map(({ title, image, slug, location, date, time }) => ({
+    title,
+    image,
+    slug,
+    location,
+    date,
+    time,
+  }));
+}
+
+async function HomePageContent() {
+  await connection();
+
+  let events: EventSummary[];
+  try {
+    events = await getEvents();
+  } catch (error) {
+    console.error("Unable to load events:", error);
+    return (
+      <section>
+        <p role="alert">Unable to load events. Please try again later.</p>
+      </section>
+    );
+  }
+
   return (
     <section>
       <h1 className="text-center max-sm:text-3xl">
@@ -18,7 +65,7 @@ const page = () => {
 
         <ul className = "events">
           {events.map((event) => (
-            <li key={event.title}>
+            <li key={event.slug}>
               <EventCard {...event} />
             </li>
           ))}
@@ -28,4 +75,10 @@ const page = () => {
   )
 }
 
-export default page;
+export default function Page() {
+  return (
+    <Suspense fallback={<p>Loading events...</p>}>
+      <HomePageContent />
+    </Suspense>
+  );
+}

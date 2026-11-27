@@ -86,8 +86,8 @@ const EventSchema = new Schema<IEvent>(
       type: [String],
       required: [true, 'Agenda is required'],
       validate: {
-        validator: (v: string[]) => v.length > 0,
-        message: 'At least one agenda item is required',
+        validator: (v: string[]) => v.length > 0 && v.every((item) => item.trim().length > 0),
+        message: 'At least one non-empty agenda item is required',
       },
     },
     organizer: {
@@ -99,8 +99,8 @@ const EventSchema = new Schema<IEvent>(
       type: [String],
       required: [true, 'Tags are required'],
       validate: {
-        validator: (v: string[]) => v.length > 0,
-        message: 'At least one tag is required',
+        validator: (v: string[]) => v.length > 0 && v.every((item) => item.trim().length > 0),
+        message: 'At least one non-empty tag is required',
       },
     },
   },
@@ -109,25 +109,26 @@ const EventSchema = new Schema<IEvent>(
   }
 );
 
-// Pre-save hook for slug generation and data normalization
-EventSchema.pre('save', function () {
+// Normalize date and time before schema validation so callers can validate before uploading.
+EventSchema.pre('validate', function () {
   const event = this as IEvent;
 
-  // Generate slug only if title changed or document is new
-  if (event.isModified('title') || event.isNew) {
-    event.slug = generateSlug(event.title);
-  }
-
-  // Normalize date to ISO format if it's not already
   if (event.isModified('date')) {
     event.date = normalizeDate(event.date);
   }
 
-  // Normalize time format (HH:MM)
   if (event.isModified('time')) {
     event.time = normalizeTime(event.time);
   }
+});
 
+// Preserve title-derived slugs, falling back to the document ID for non-Latin titles.
+EventSchema.pre('save', function () {
+  const event = this as IEvent;
+
+  if (event.isModified('title') || event.isNew) {
+    event.slug = generateSlug(event.title) || event._id.toString();
+  }
 });
 
 // Helper function to generate URL-friendly slug
@@ -143,11 +144,66 @@ function generateSlug(title: string): string {
 
 // Helper function to normalize date to ISO format
 function normalizeDate(dateString: string): string {
-  const date = new Date(dateString);
+  const trimmedDate = dateString.trim();
+  const rangeMatch = trimmedDate.match(/^(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2})$/);
+  if (rangeMatch) {
+    return `${normalizeSingleDate(rangeMatch[1])}/${normalizeSingleDate(rangeMatch[2])}`;
+  }
+
+  const namedDateMatch = trimmedDate.match(
+    /^([A-Za-z]+)\s+(\d{1,2})(?:\s*[–-]\s*(?:([A-Za-z]+)\s+)?(\d{1,2}))?,?\s+(\d{4})$/,
+  );
+  if (namedDateMatch) {
+    const [, startMonth, startDay, endMonth, endDay, year] = namedDateMatch;
+    const start = normalizeNamedDate(startMonth, startDay, year);
+    if (!endDay) {
+      return start;
+    }
+
+    const end = normalizeNamedDate(endMonth || startMonth, endDay, year);
+    return `${start}/${end}`;
+  }
+
+  return normalizeSingleDate(trimmedDate);
+}
+
+function normalizeNamedDate(monthName: string, day: string, year: string): string {
+  const months = [
+    'january', 'february', 'march', 'april', 'may', 'june',
+    'july', 'august', 'september', 'october', 'november', 'december',
+  ];
+  const normalizedMonth = monthName.toLowerCase();
+  const monthIndex = months.findIndex(
+    (month) => month === normalizedMonth || month.slice(0, 3) === normalizedMonth,
+  );
+
+  if (monthIndex < 0) {
+    throw new Error('Invalid date format');
+  }
+
+  const isoDate = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${day.padStart(2, '0')}`;
+  return normalizeSingleDate(isoDate);
+}
+
+function normalizeSingleDate(dateString: string): string {
+  const trimmedDate = dateString.trim();
+  const isoMatch = trimmedDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (isoMatch) {
+    const date = new Date(`${trimmedDate}T00:00:00.000Z`);
+
+    if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== trimmedDate) {
+      throw new Error('Invalid date format');
+    }
+
+    return trimmedDate;
+  }
+
+  const date = new Date(trimmedDate);
   if (isNaN(date.getTime())) {
     throw new Error('Invalid date format');
   }
-  return date.toISOString().split('T')[0]; // Return YYYY-MM-DD format
+  return date.toISOString().split('T')[0];
 }
 
 // Helper function to normalize time format
@@ -160,17 +216,24 @@ function normalizeTime(timeString: string): string {
     throw new Error('Invalid time format. Use HH:MM or HH:MM AM/PM');
   }
   
-  let hours = parseInt(match[1]);
+  const originalHours = Number(match[1]);
+  let hours = originalHours;
   const minutes = match[2];
   const period = match[4]?.toUpperCase();
   
   if (period) {
+    if (originalHours < 1 || originalHours > 12) {
+      throw new Error('Invalid time values');
+    }
+
     // Convert 12-hour to 24-hour format
     if (period === 'PM' && hours !== 12) hours += 12;
     if (period === 'AM' && hours === 12) hours = 0;
+  } else if (hours < 0 || hours > 23) {
+    throw new Error('Invalid time values');
   }
   
-  if (hours < 0 || hours > 23 || parseInt(minutes) < 0 || parseInt(minutes) > 59) {
+  if (Number(minutes) < 0 || Number(minutes) > 59) {
     throw new Error('Invalid time values');
   }
   
