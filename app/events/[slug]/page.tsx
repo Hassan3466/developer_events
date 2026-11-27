@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { Suspense } from "react";
 
 import Event from "@/database/event.model";
@@ -58,6 +59,7 @@ function EventTags({ tags }: { tags: string[] }) {
 }
 
 async function EventDetailsContent({ params }: EventPageProps) {
+  await connection();
   const { slug } = await params;
   await connectDB();
 
@@ -136,21 +138,23 @@ async function EventDetailsContent({ params }: EventPageProps) {
 
           <EventTags tags={event.tags} />
         </div>
-      </div>
 
-      {/* RIGHT SIDE - BOOKING FORM*/}
-      <aside className="booking">
-        <div className = "signup-card">
+        <aside className="booking">
+          <div className="signup-card">
             <h2>Book Your Spot</h2>
-            {bookings >0 ? (
-                <p className="text-sm font-bold"> Join {bookings} people who have booked this event.</p>
-          
-            ): (
-                <p className="text-sm font-bold"> Be the first to book this event!</p>
+            {bookings > 0 ? (
+              <p className="text-sm font-bold">
+                Join {bookings} people who have booked this event.
+              </p>
+            ) : (
+              <p className="text-sm font-bold">
+                Be the first to book this event!
+              </p>
             )}
-            <BookEvent />
-        </div>
-      </aside>
+            <BookEvent eventId={event._id.toString()} />
+          </div>
+        </aside>
+      </div>
 
       <div className = "flex w-full flex-col gap-4 mt-20">
         <h2>Similar Events</h2>

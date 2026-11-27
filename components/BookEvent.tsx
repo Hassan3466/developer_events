@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 
-const BookEvent = () => {
+type BookEventProps = {
+    eventId: string;
+};
+
+const BookEvent = ({ eventId }: BookEventProps) => {
     const [email, setEmail] = useState("");
     const [submitted, setSubmitted] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -20,14 +24,22 @@ const BookEvent = () => {
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ email }),
+                body: JSON.stringify({ eventId, email }),
             });
 
+            const result: unknown = await response.json();
             if (!response.ok) {
-                throw new Error("Failed to book the event. Please try again.");
+                const message =
+                    typeof result === "object" &&
+                    result !== null &&
+                    "message" in result &&
+                    typeof result.message === "string"
+                        ? result.message
+                        : "Failed to book the event. Please try again.";
+                throw new Error(message);
             }
 
-            setSuccessMessage("Booking successful! Check your email for confirmation.");
+            setSuccessMessage("Booking successful!");
             setEmail(""); // Clear the input field after successful booking
         } catch (err) {
             if (err instanceof Error) {

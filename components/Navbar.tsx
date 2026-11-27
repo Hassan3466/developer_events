@@ -12,11 +12,11 @@ const Navbar = () => {
           <p>DevEvent</p>
         </Link>
 
-        <ul>
-            <li><Link href="/">Home</Link></li>
-            <li><Link href="/events">Events</Link></li>
-            <li><Link href="/create-event">Create Event</Link></li>
-        </ul>
+        <div className="flex flex-row items-center gap-6">
+          <Link href="/">Home</Link>
+          <Link href="/events">Events</Link>
+          <Link href="/create-event">Create Event</Link>
+        </div>
       </nav>
     </header>
   );

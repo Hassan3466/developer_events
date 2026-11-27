@@ -1,5 +1,40 @@
 import { Schema, model, models, Document, Types } from 'mongoose';
+import { domainToASCII } from 'node:url';
 import Event from './event.model';
+
+function isValidEmail(email: string): boolean {
+  const separator = email.indexOf('@');
+  if (
+    separator <= 0 ||
+    separator !== email.lastIndexOf('@') ||
+    email.length > 254
+  ) {
+    return false;
+  }
+
+  const localPart = email.slice(0, separator);
+  const domain = domainToASCII(email.slice(separator + 1));
+  const localPartPattern = /^[\p{L}\p{M}\p{N}!#$%&'*+/=?^_`{|}~.-]+$/u;
+
+  if (
+    localPart.length > 64 ||
+    !localPartPattern.test(localPart) ||
+    localPart.startsWith('.') ||
+    localPart.endsWith('.') ||
+    localPart.includes('..') ||
+    !domain ||
+    domain.length > 253
+  ) {
+    return false;
+  }
+
+  return domain.split('.').every(
+    (label) =>
+      label.length > 0 &&
+      label.length <= 63 &&
+      /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(label),
+  );
+}
 
 // TypeScript interface for Booking document
 export interface IBooking extends Document {
@@ -22,11 +57,7 @@ const BookingSchema = new Schema<IBooking>(
       trim: true,
       lowercase: true,
       validate: {
-        validator: function (email: string) {
-          // RFC 5322 compliant email validation regex
-          const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-          return emailRegex.test(email);
-        },
+        validator: isValidEmail,
         message: 'Please provide a valid email address',
       },
     },
